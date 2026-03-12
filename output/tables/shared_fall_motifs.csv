@@ -1,0 +1,13 @@
+token,weight,abs_weight,dataset,type
+f d impact_high rel_impact_high,2.7768934767290454,2.7768934767290454,FallAllD,Fall
+f d impact_high rel_impact_high,2.478930464611985,2.478930464611985,FARSEEING,Fall
+e d impact_high rel_impact_high,1.9791435895324117,1.9791435895324117,FallAllD,Fall
+e d impact_high rel_impact_high,1.902804631934146,1.902804631934146,FARSEEING,Fall
+d f d impact_high rel_impact_high,1.777276679056662,1.777276679056662,FallAllD,Fall
+d f d impact_high,1.777276679056662,1.777276679056662,FallAllD,Fall
+e d impact_low rel_impact_med,-1.6586932371916105,1.6586932371916105,FARSEEING,ADL
+d e e impact_low,-1.6485817617404348,1.6485817617404348,FARSEEING,ADL
+e d d impact_low,-1.5563992832076177,1.5563992832076177,FARSEEING,ADL
+d e e impact_med rel_impact_med,-1.4871193717817601,1.4871193717817601,FARSEEING,ADL
+d e e impact_low,-1.349227966159395,1.349227966159395,FallAllD,ADL
+e d e impact_med,-1.332153028128412,1.332153028128412,FallAllD,ADL

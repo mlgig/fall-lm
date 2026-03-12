@@ -1,0 +1,14 @@
+aeon==1.2.0
+datasets==4.6.1
+einops==0.8.2
+huggingface_hub==0.24.0
+joblib==1.5.1
+matplotlib==3.10.8
+numpy==1.25.2
+pandas==2.0.3
+pyts==0.13.0
+scikit_learn==1.8.0
+scipy==1.17.1
+seaborn==0.13.2
+torch==2.7.1
+tqdm==4.67.1
