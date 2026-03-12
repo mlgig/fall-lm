@@ -8,10 +8,10 @@ This repository contains the code used for the experiments in the paper. It incl
 
 The `experiments.ipynb` notebook reproduces the experiments reported in the paper:
 
-1. **Subject-wise cross-validation** on the FARSEEING real-world falls dataset  
-2. **Data scarcity analysis**, where the number of training fall events is progressively reduced  
-3. **Cross-dataset transfer**, where models trained on simulated falls (FallAllD) are evaluated on real-world falls (FARSEEING)  
-4. **Symbolic motion motif analysis** for interpreting FallLM representations
+1. **Subject-wise cross-validation** on the FARSEEING real-world falls dataset.  
+2. **Data scarcity analysis**, where the number of training fall events is progressively reduced.  
+3. **Cross-dataset transfer**, where models trained on simulated falls (FallAllD) are evaluated on real-world falls (FARSEEING).  
+4. **Symbolic motion motif analysis** for interpreting FallLM representations.
 
 ---
 
