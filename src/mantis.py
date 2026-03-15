@@ -18,15 +18,13 @@ class MantisClassifier(BaseEstimator, ClassifierMixin, TransformerMixin):
                  pretrained_model="paris-noah/Mantis-8M",
                  random_state=None):
         
-        # --- SEED INITIALIZATION ---
         if random_state is not None:
             torch.manual_seed(random_state)
             np.random.seed(random_state)
             random.seed(random_state)
             if torch.cuda.is_available():
                 torch.cuda.manual_seed_all(random_state)
-        
-        # --- NEW DEVICE LOGIC ---
+
         if device is None:
             if torch.cuda.is_available(): self.device = 'cuda'
             elif torch.backends.mps.is_available(): self.device = 'mps'

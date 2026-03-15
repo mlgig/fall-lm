@@ -13,7 +13,7 @@ from costream.segmentation import create_training_data
 
 
 def segment_and_save(
-    train_dfs, test_dfs, feat_cols, win_sec, thresh, dim="", freq=100, orig_freq=100
+    train_dfs, test_dfs, feat_cols, win_sec, thresh, suffix="", freq=100, orig_freq=100
 ):
     """Segment and save train test data with subject-level splits."""
 
@@ -46,11 +46,10 @@ def segment_and_save(
         test_events.append(falls.tolist())
 
     # Handle 3D case
-    d = ""
-    if dim == "3d":
+    if suffix == "3d":
         X_train = X_train.transpose(0, 2, 1)  # (N, 3, T)
         X_train, y_train = filter_active_windows(X_train, y_train, threshold=1.4)
-        d = "_3d"
+    d = "" if suffix == "" else f"_{suffix}"
 
     # Save all splits
     np.save(f"data/preprocessed/X_train{d}_{win_sec}.npy", X_train)
@@ -92,7 +91,7 @@ def _gt_ranges(events, window_size, tolerance, freq):
 
 
 def _extract_window(sig, anchor, win_samples, pre_event_samples=100):
-    s = max(0, anchor - pre_event_samples)  # same spirit as multiphase (+1s pre-event)
+    s = max(0, anchor - pre_event_samples)  # same as multiphase (+1s pre-event)
     e = s + win_samples
     if e > len(sig):
         e = len(sig)
@@ -356,7 +355,6 @@ def filter_impact_tokens(df):
             regex=True,
         )
     ]
-
 
 def select_visualization_motifs(shared_motifs, n=3):
     df = shared_motifs.copy()

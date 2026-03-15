@@ -31,18 +31,18 @@ class MultivariateMotionTokenizer:
         Standardizes input to (N, C, T).
         Returns a list of views (Z-normalized channels and gradients).
         """
-        # Auto-reshape 1D inputs to 3D: (N, T) -> (N, 1, T)
+        # Reshape 1D inputs to 3D: (N, T) -> (N, 1, T)
         if X.ndim == 2:
             X = np.expand_dims(X, axis=1)
         N, C, T = X.shape
         views =[]
         for c in range(C):
             v = X[:, c, :]
-            # 1. Z-Normalize Raw Channel
+            # Z-Normalize Raw Channel
             v_norm = (v - v.mean(axis=1, keepdims=True)) / (v.std(axis=1, keepdims=True) + 1e-6)
             views.append(v_norm)
             
-            # 2. Extract & Z-Normalize Gradient
+            # Extract & Z-Normalize Gradient
             if self.use_diff:
                 g = np.diff(v, axis=1, prepend=v[:, :1])
                 g_norm = (g - g.mean(axis=1, keepdims=True)) / (g.std(axis=1, keepdims=True) + 1e-6)
@@ -104,7 +104,7 @@ class MultivariateMotionTokenizer:
 
     def fit(self, X):
         views = self._get_views(X)
-        # Stack all views to find global SAX breakpoints (ensures consistency)
+        # Stack all views to find global SAX breakpoints
         combined = np.vstack([self._compress(v) for v in views])
         self.sax.fit(combined)
         self.is_fitted = True
@@ -122,10 +122,10 @@ class MultivariateMotionTokenizer:
         for i in range(N):
             # Zip tokens from all views for window i
             window_tokens = zip(*[v[i] for v in views_sax])
-            # Join into "Words" (e.g., "aabbcc") and then into a "Sentence"
+            # Join into words
             merged = ["".join(letters) for letters in window_tokens]
 
-            # --- Impact token ---
+            # Impact token
             raw_signal = X[i] if X.ndim == 2 else X[i, 0]
             peak = np.max(np.abs(raw_signal))
             mean = np.mean(np.abs(raw_signal))
@@ -158,19 +158,18 @@ class FallLM(BaseEstimator, ClassifierMixin):
         self, 
         n_bins=4, 
         strategy='normal',
-        word_size=30,           # e.g. 30 tokens for a 3-second window
-        use_diff=True,          # Combine Amplitude + Gradient
-        ngram_range=(1, 2),     # Unigrams and Bigrams
+        word_size=30,           
+        use_diff=True,          
+        ngram_range=(1, 2),     
         max_features=5000, 
-        vectorizer_type='tfidf',# 'tfidf' or 'count'
+        vectorizer_type='tfidf', #'tfidf' or 'count'
         base_estimator= None,
-        alpha=2.0,              # Cost parameter for False Negatives
+        alpha=2.0,              
         cv=5,
         random_state=42,
         tune_threshold=True,
         use_pip=False
     ):
-        # Scikit-Learn strictly requires exactly these assignments in __init__
         self.n_bins = n_bins
         self.strategy = strategy
         self.word_size = word_size
@@ -246,77 +245,3 @@ class FallLM(BaseEstimator, ClassifierMixin):
     def predict(self, X):
         probs = self.predict_proba(X)[:, 1]
         return (probs >= self.threshold_).astype(int)
-
-    def show_grammar(self, top_n=10, n_bins=4):
-        """
-        Decodes the optimal 6-letter tokens back into human-readable physics.
-        """
-        if not isinstance (self.base_estimator,  LogisticRegression):
-            print("Grammar extraction requires Logistic Regression ('lr').")
-            return
-            
-        feature_names = self.vectorizer_.get_feature_names_out()
-        fitted_lr = self.classifier_.fitted_estimators_[0]
-        
-        try:
-            coefficients = fitted_lr.coef_[0]
-        except AttributeError:
-            coefficients = np.mean([est.base_estimator.coef_[0] for est in fitted_lr.calibrated_classifiers_], axis=0)
-            
-        sorted_indices = np.argsort(coefficients)
-        
-        # --- The Post-Processing Translator ---
-        # Define the exact same mapping we discussed
-        chars =[chr(97 + i) for i in range(n_bins)]
-        if n_bins == 3:
-            val_adjs =['Drop', 'Mid', 'Peak']
-            grad_adjs =['Plunge', 'Flat', 'Surge']
-        elif n_bins == 4:
-            val_adjs =['Drop', 'Low', 'High', 'Peak']
-            grad_adjs = ['Plunge', 'Sink', 'Rise', 'Surge']
-        else:
-            val_adjs =[f'Val{i}' for i in range(n_bins)]
-            grad_adjs = [f'Grad{i}' for i in range(n_bins)]
-            
-        axes = ['AP', 'ML', 'V']
-        
-        def decode_word(word):
-            if len(word) != 6: return word # Fallback if not a 6-letter word
-            
-            decoded =[]
-            view_idx = 0
-            for axis in axes:
-                # Value
-                val_idx = chars.index(word[view_idx]) if word[view_idx] in chars else 0
-                decoded.append(f"[{axis}_{val_adjs[val_idx]}]")
-                view_idx += 1
-                
-                # Gradient (if use_diff=True)
-                grad_idx = chars.index(word[view_idx]) if word[view_idx] in chars else 0
-                decoded.append(f"[{axis}_{grad_adjs[grad_idx]}]")
-                view_idx += 1
-                
-            return "".join(decoded)
-
-        def translate_ngram(ngram):
-            # If it's a bigram (e.g., "acdbca bbcdaa"), split it, decode each, and rejoin with " -> "
-            words = ngram.split()
-            decoded_words = [decode_word(w) for w in words]
-            return "  ➔  ".join(decoded_words)
-
-        # --- Printing the Table ---
-        print("\n" + "="*80)
-        print("THE GRAMMAR OF FALLS (Highest Predictors)")
-        print("="*80)
-        for idx in sorted_indices[-top_n:][::-1]:
-            raw_ngram = feature_names[idx]
-            translation = translate_ngram(raw_ngram)
-            print(f"Weight: +{coefficients[idx]:.4f} | Raw: {raw_ngram:<13} | {translation}")
-            
-        print("\n" + "="*80)
-        print("THE GRAMMAR OF NORMALCY (Strongest Negatives)")
-        print("="*80)
-        for idx in sorted_indices[:top_n]:
-            raw_ngram = feature_names[idx]
-            translation = translate_ngram(raw_ngram)
-            print(f"Weight: {coefficients[idx]:.4f} | Raw: {raw_ngram:<13} | {translation}")
