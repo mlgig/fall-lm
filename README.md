@@ -7,30 +7,17 @@ Falls are a major health concern for older adults, and wearable sensors have bee
 
 ## Experiments
 
-This repository contains the code used for the experiments in the paper. It includes the streaming evaluation pipeline, and the experimental setup used to compare motion representations for wearable fall detection. The `experiments.ipynb` notebook reproduces the experiments reported in the paper:
+This repository contains the code used for the experiments in the paper. It includes the streaming evaluation pipeline, and the experimental setup used to compare motion representations for wearable fall detection. The [experiments.ipynb](experiments.ipynb) notebook reproduces the experiments reported in the paper:
 
 1. **Subject-wise cross-validation** on the FARSEEING real-world falls dataset.  
 2. **Data scarcity analysis**, where the number of training fall events is progressively reduced.  
 3. **Cross-dataset transfer**, where models trained on simulated falls (FallAllD) are evaluated on real-world falls (FARSEEING).  
 4. **Symbolic motion motif analysis** for interpreting FallLM representations.
 
----
+The experiments were run using **Python 3.10**. Dependencies can be installed using:
 
-## Installation
-
-Install dependencies using:
 ```bash
 pip install -r requirements.txt
 ```
 
-The experiments were run using **Python 3.10**.
-
----
-
-## Running the Experiments
-
-All experiments are provided in reproducible form in the notebook [experiments.ipynb](experiments.ipynb).
-
-The preprocessed version of the `FallAllD` dataset used in this study can be downloaded [here](https://drive.google.com/file/d/1mLmq34paps-jz4XQ_ReSpJTEEbieMoIb/view?usp=sharing).
-
-The FARSEEING dataset is available upon request from its maintainers.
+The preprocessed version of the `FallAllD` dataset used in this study can be downloaded [here](https://drive.google.com/file/d/1mLmq34paps-jz4XQ_ReSpJTEEbieMoIb/view?usp=sharing). The FARSEEING dataset is available upon request from its maintainers.
