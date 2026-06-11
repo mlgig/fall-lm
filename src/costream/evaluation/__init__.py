@@ -1,4 +1,4 @@
-from .tester import run_experiment, ModelSpec
+from .tester import run_experiment, ModelSpec, train_models, evaluate_models
 from .event_detection import evaluate_recording
 from .cross_validation import run_subject_cv, aggregate_cv_results
 from .visualization import (
@@ -12,8 +12,10 @@ from .visualization import (
 )
 
 __all__ = [
-    "run_experiment", 
-    "ModelSpec", 
+    "run_experiment",
+    "ModelSpec",
+    "train_models",
+    "evaluate_models",
     "evaluate_recording",
     "run_subject_cv",
     "aggregate_cv_results",

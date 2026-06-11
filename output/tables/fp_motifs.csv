@@ -1,0 +1,11 @@
+token,count,in_fall_vocab
+d e impact_med rel_impact_high,9,False
+d d e impact_med,9,False
+d d e impact_med rel_impact_high,6,False
+d d e impact_high,5,False
+d d e impact_high rel_impact_high,5,False
+d e impact_high rel_impact_high,5,False
+d e e impact_med rel_impact_high,3,False
+e d e impact_med rel_impact_high,3,False
+d e impact_med rel_impact_med,3,False
+e e impact_med rel_impact_high,3,True

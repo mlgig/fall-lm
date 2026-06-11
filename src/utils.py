@@ -1,5 +1,6 @@
 import numpy as np, pandas as pd, os
 from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.feature_extraction.text import CountVectorizer
 from scipy.signal import resample_poly
 import matplotlib.pyplot as plt
 from sklearn.base import clone
@@ -35,15 +36,7 @@ def segment_and_save(
     )
 
     # Extract test signals and events (streaming evaluation format)
-    if len(feat_cols) == 1:
-        test_signals = [df[feat_cols[0]].values for df in test_dfs]
-    else:
-        test_signals = [df[feat_cols].values for df in test_dfs]
-
-    test_events = []
-    for df in test_dfs:
-        falls = np.where(df["label"] > 0)[0]
-        test_events.append(falls.tolist())
+    test_signals, test_events = extract_test_signals_events(test_dfs, feat_cols)
 
     # Handle 3D case
     if suffix == "3d":
@@ -70,6 +63,21 @@ def segment_and_save(
     print(f"  Test:  {len(test_signals)} signals, {len(test_events)} event lists")
 
     return X_train, y_train, test_signals, test_events
+
+
+def extract_test_signals_events(test_dfs, feat_cols):
+    """Build (test_signals, test_events) for streaming evaluation from raw test dfs."""
+    if len(feat_cols) == 1:
+        test_signals = [df[feat_cols[0]].values for df in test_dfs]
+    else:
+        test_signals = [df[feat_cols].values for df in test_dfs]
+
+    test_events = []
+    for df in test_dfs:
+        falls = np.where(df["label"] > 0)[0]
+        test_events.append(falls.tolist())
+
+    return test_signals, test_events
 
 
 def _event_list(ep):
@@ -240,6 +248,18 @@ def summarize_error_motifs(trace_df, kind="FP", top_n=10):
     return tokens
 
 
+def explode_ngram_motifs(trace_df, ngram_range, kind="FP", top_n=10):
+    """Count n-gram motifs (matching a FallLM vectorizer's ngram_range) for a given trace kind."""
+    df = trace_df[trace_df.kind == kind].dropna(subset=["token_sentence"])
+    if df.empty:
+        return pd.DataFrame(columns=["token", "count"])
+    vec = CountVectorizer(ngram_range=ngram_range, token_pattern=r"(?u)\b\w+\b")
+    counts = vec.fit_transform(df["token_sentence"])
+    freqs = np.asarray(counts.sum(axis=0)).ravel()
+    motif_df = pd.DataFrame({"token": vec.get_feature_names_out(), "count": freqs})
+    return motif_df.sort_values("count", ascending=False).head(top_n).reset_index(drop=True)
+
+
 def resample_df(df, feat_cols, orig_freq, target_freq):
 
     if orig_freq == target_freq:
@@ -304,11 +324,7 @@ class WindowZNormalizer(BaseEstimator, TransformerMixin):
 
 def extract_top_tokens(model, top_n=20):
     feature_names = model.vectorizer_.get_feature_names_out()
-    fitted_lr = model.classifier_.fitted_estimators_[0]
-    try:
-        coef = fitted_lr.coef_[0]
-    except:
-        coef = fitted_lr.base_estimator.coef_[0]
+    coef = model.classifier_.coef_[0]
     df = pd.DataFrame(
         {"token": feature_names, "weight": coef, "abs_weight": np.abs(coef)}
     )

@@ -90,9 +90,10 @@ def get_model_specs(
                 n_bins=8,
                 word_size=3,
                 vectorizer_type="count",
-                alpha=2.0,
+                alpha=1.5,
                 ngram_range=(4,5),
                 use_diff=False,
+                tune_threshold=False,
             ),
         ),
     }

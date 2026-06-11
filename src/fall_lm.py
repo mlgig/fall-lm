@@ -7,7 +7,8 @@ from pyts.approximation import PiecewiseAggregateApproximation, SymbolicAggregat
 from sklearn.base import BaseEstimator, ClassifierMixin, clone
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.linear_model import LogisticRegression
-from costream.model import CostClassifierCV 
+from sklearn.metrics import roc_curve
+from sklearn.model_selection import cross_val_predict
 import joblib
 
 class MultivariateMotionTokenizer:
@@ -16,11 +17,13 @@ class MultivariateMotionTokenizer:
     Extracts raw amplitude and (optionally) first derivatives, compresses them via PAA,
     and discretizes them via SAX to form rich multi-character "motion words".
     """
-    def __init__(self, n_bins=4, strategy='normal', word_size=30, use_diff=True, compression='paa'):
+    def __init__(self, n_bins=4, strategy='normal', word_size=30, use_diff=True, compression='paa', use_impact=True, impact_mode='category'):
         self.n_bins = n_bins
         self.strategy = strategy
         self.word_size = word_size
         self.use_diff = use_diff
+        self.use_impact = use_impact
+        self.impact_mode = impact_mode
         self.compression = compression
         self.paa = PiecewiseAggregateApproximation(window_size=None, output_size=word_size)
         self.sax = SymbolicAggregateApproximation(n_bins=n_bins, strategy=strategy)
@@ -125,24 +128,31 @@ class MultivariateMotionTokenizer:
             # Join into words
             merged = ["".join(letters) for letters in window_tokens]
 
-            # Impact token
-            raw_signal = X[i] if X.ndim == 2 else X[i, 0]
-            peak = np.max(np.abs(raw_signal))
-            mean = np.mean(np.abs(raw_signal))
-            ratio = peak / (mean + 1e-6)
-            if peak > 2.5:
-                impact = "impact_high"
-            elif peak > 1.8:
-                impact = "impact_med"
-            else:
-                impact = "impact_low"
-            if ratio > 2.2:
-                rel_impact = "rel_impact_high"
-            elif ratio > 1.6:
-                rel_impact = "rel_impact_med"
-            else:
-                rel_impact = "rel_impact_low"
-            merged.extend([impact, rel_impact])
+            if self.use_impact:
+                raw_signal = X[i] if X.ndim == 2 else X[i, 0]
+                peak = np.max(np.abs(raw_signal))
+                mean = np.mean(np.abs(raw_signal))
+                ratio = peak / (mean + 1e-6)
+                if self.impact_mode == 'physical':
+                    # Discretize in fixed physical units — dataset-independent
+                    peak_bin = min(round(peak * 2) / 2, 6.0)   # nearest 0.5g, capped at 6g
+                    ratio_bin = min(round(ratio * 2) / 2, 6.0)  # nearest 0.5, capped at 6
+                    impact = f"impact_{peak_bin:.1f}g"
+                    rel_impact = f"rel_impact_{ratio_bin:.1f}"
+                else:
+                    if peak > 2.5:
+                        impact = "impact_high"
+                    elif peak > 1.8:
+                        impact = "impact_med"
+                    else:
+                        impact = "impact_low"
+                    if ratio > 2.2:
+                        rel_impact = "rel_impact_high"
+                    elif ratio > 1.6:
+                        rel_impact = "rel_impact_med"
+                    else:
+                        rel_impact = "rel_impact_low"
+                merged.extend([impact, rel_impact])
             X_sentences.append(" ".join(merged))
         return X_sentences
 
@@ -168,7 +178,9 @@ class FallLM(BaseEstimator, ClassifierMixin):
         cv=5,
         random_state=42,
         tune_threshold=True,
-        use_pip=False
+        use_pip=False,
+        use_impact=True,
+        impact_mode='category'
     ):
         self.n_bins = n_bins
         self.strategy = strategy
@@ -190,24 +202,33 @@ class FallLM(BaseEstimator, ClassifierMixin):
         self.tokenizer_ = None
         self.vectorizer_ = None
         self.classifier_ = None
-        self.threshold_ = 0.5 
+        self.threshold_ = 0.5
         self.tune_threshold = tune_threshold
         self.use_pip = use_pip
+        self.use_impact = use_impact
+        self.impact_mode = impact_mode
     
     def fit(self, X, y):
         self.tokenizer_ = MultivariateMotionTokenizer(
-            n_bins=self.n_bins, 
-            strategy=self.strategy, 
+            n_bins=self.n_bins,
+            strategy=self.strategy,
             word_size=self.word_size,
             use_diff=self.use_diff,
+            use_impact=self.use_impact,
+            impact_mode=self.impact_mode,
             compression="pip" if self.use_pip else "paa"
         )
         X_sentences = self.tokenizer_.fit_transform(X)
-     
+
+        # Clamp ngram_range to actual sentence length so disabled tokens don't cause empty vocabulary
+        sentence_len = len(X_sentences[0].split())
+        max_n = min(self.ngram_range[1], sentence_len)
+        min_n = min(self.ngram_range[0], max_n)
+
         # Vectorization
         vec_class = TfidfVectorizer if self.vectorizer_type == 'tfidf' else CountVectorizer
         self.vectorizer_ = vec_class(
-            ngram_range=self.ngram_range,
+            ngram_range=(min_n, max_n),
             max_features=self.max_features,
             token_pattern=r"(?u)\b\w+\b"
         )
@@ -218,22 +239,17 @@ class FallLM(BaseEstimator, ClassifierMixin):
                                                      random_state=self.random_state)
             self.classifier_type = 'lr'
 
-        if self.tune_threshold:
-            # 4. CostClassifierCV
-            self.classifier_ = CostClassifierCV(
-                base_estimators=[self.base_estimator],
-                cv=self.cv,
-                alpha=self.alpha,
-                method="stacking",
-                random_state=self.random_state
-            )
-        else:
-            self.classifier_ = self.base_estimator
-        
+        self.classifier_ = self.base_estimator
         self.classifier_.fit(X_tfidf, np.array(y))
 
         if self.tune_threshold:
-            self.threshold_ = self.classifier_.threshold_
+            probs = cross_val_predict(
+                clone(self.classifier_), X_tfidf, np.array(y),
+                cv=self.cv, method='predict_proba'
+            )[:, 1]
+            fpr, tpr, roc_thresholds = roc_curve(y, probs)
+            youden_j = tpr + (1 - fpr) - 1
+            self.threshold_ = float(roc_thresholds[np.argmax(youden_j)])
         
         return self
 
