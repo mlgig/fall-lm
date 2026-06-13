@@ -17,14 +17,15 @@ class MultivariateMotionTokenizer:
     Extracts raw amplitude and (optionally) first derivatives, compresses them via PAA,
     and discretizes them via SAX to form rich multi-character "motion words".
     """
-    def __init__(self, n_bins=4, strategy='normal', word_size=30, use_diff=True, compression='paa', use_impact=True, impact_mode='category'):
+    def __init__(self, n_bins=4, strategy='normal', word_size=30, use_diff=True, use_sax=True, use_impact=True, use_rel_impact=True, impact_mode='category'):
         self.n_bins = n_bins
         self.strategy = strategy
         self.word_size = word_size
         self.use_diff = use_diff
+        self.use_sax = use_sax
         self.use_impact = use_impact
+        self.use_rel_impact = use_rel_impact
         self.impact_mode = impact_mode
-        self.compression = compression
         self.paa = PiecewiseAggregateApproximation(window_size=None, output_size=word_size)
         self.sax = SymbolicAggregateApproximation(n_bins=n_bins, strategy=strategy)
         self.is_fitted = False
@@ -53,57 +54,7 @@ class MultivariateMotionTokenizer:
         return views
     
     def _compress(self, v):
-        if self.compression == "paa":
-            return self.paa.transform(v)
-        elif self.compression == "pip":
-            N = v.shape[0]
-            out = np.zeros((N, self.word_size))
-            for i in range(N):
-                idx = self._get_pip_indices(v[i], self.word_size)
-                out[i] = v[i][idx]
-            return out
-    
-    def _get_pip_indices(self, y, k):
-        n = len(y)
-        if k >= n:
-            return np.arange(n)
-        
-        # initialize with first and last
-        pip_idx = np.zeros(k, dtype=int)
-        pip_idx[0] = 0
-        pip_idx[1] = n - 1
-        num_pips = 2
-
-        x = np.arange(n)
-        for _ in range(k - 2):
-            best_dist = -1
-            best_idx = -1
-            # sort current pips
-            current = np.sort(pip_idx[:num_pips])
-            for i in range(len(current) - 1):
-                start = current[i]
-                end = current[i + 1]
-                if end - start <= 1:
-                    continue
-                xs = x[start + 1:end]
-                ys = y[start + 1:end]
-                # line through endpoints
-                x1, y1 = start, y[start]
-                x2, y2 = end, y[end]
-                slope = (y2 - y1) / (x2 - x1)
-                intercept = y1 - slope * x1
-                # vectorized distances
-                d = np.abs(ys - (slope * xs + intercept))
-                idx_local = np.argmax(d)
-                dist_local = d[idx_local]
-                if dist_local > best_dist:
-                    best_dist = dist_local
-                    best_idx = xs[idx_local]
-            if best_idx == -1:
-                break
-            pip_idx[num_pips] = best_idx
-            num_pips += 1
-        return np.sort(pip_idx[:num_pips])
+        return self.paa.transform(v)
 
     def fit(self, X):
         views = self._get_views(X)
@@ -117,18 +68,24 @@ class MultivariateMotionTokenizer:
         if not self.is_fitted:
             raise RuntimeError("Tokenizer not fitted! Call fit() before transform().")
         N = X.shape[0]
-        views = self._get_views(X)
-        
-        # Apply compression and SAX to each view independently
-        views_sax = [self.sax.transform(self._compress(v)) for v in views]
+        views_sax = []
+
+        if self.use_sax:
+            views = self._get_views(X)
+            # Apply compression and SAX to each view independently
+            views_sax = [self.sax.transform(self._compress(v)) for v in views]
+
         X_sentences =[]
         for i in range(N):
-            # Zip tokens from all views for window i
-            window_tokens = zip(*[v[i] for v in views_sax])
-            # Join into words
-            merged = ["".join(letters) for letters in window_tokens]
+            if self.use_sax:
+                # Zip tokens from all views for window i
+                window_tokens = zip(*[v[i] for v in views_sax])
+                # Join into words
+                merged = ["".join(letters) for letters in window_tokens]
+            else:
+                merged = []
 
-            if self.use_impact:
+            if self.use_impact or self.use_rel_impact:
                 raw_signal = X[i] if X.ndim == 2 else X[i, 0]
                 peak = np.max(np.abs(raw_signal))
                 mean = np.mean(np.abs(raw_signal))
@@ -152,7 +109,11 @@ class MultivariateMotionTokenizer:
                         rel_impact = "rel_impact_med"
                     else:
                         rel_impact = "rel_impact_low"
-                merged.extend([impact, rel_impact])
+                if self.use_impact:
+                    merged.append(impact)
+                if self.use_rel_impact:
+                    merged.append(rel_impact)
+
             X_sentences.append(" ".join(merged))
         return X_sentences
 
@@ -177,10 +138,11 @@ class FallLM(BaseEstimator, ClassifierMixin):
         alpha=2.0,              
         cv=5,
         random_state=42,
-        tune_threshold=True,
-        use_pip=False,
+        tune_threshold=False,
+        use_sax=True,
         use_impact=True,
-        impact_mode='category'
+        use_rel_impact=True,
+        impact_mode='category',
     ):
         self.n_bins = n_bins
         self.strategy = strategy
@@ -204,26 +166,32 @@ class FallLM(BaseEstimator, ClassifierMixin):
         self.classifier_ = None
         self.threshold_ = 0.5
         self.tune_threshold = tune_threshold
-        self.use_pip = use_pip
+        self.use_sax = use_sax
         self.use_impact = use_impact
+        self.use_rel_impact = use_rel_impact
         self.impact_mode = impact_mode
-    
+
     def fit(self, X, y):
         self.tokenizer_ = MultivariateMotionTokenizer(
             n_bins=self.n_bins,
             strategy=self.strategy,
             word_size=self.word_size,
             use_diff=self.use_diff,
+            use_sax=self.use_sax,
             use_impact=self.use_impact,
+            use_rel_impact=self.use_rel_impact,
             impact_mode=self.impact_mode,
-            compression="pip" if self.use_pip else "paa"
         )
         X_sentences = self.tokenizer_.fit_transform(X)
 
         # Clamp ngram_range to actual sentence length so disabled tokens don't cause empty vocabulary
         sentence_len = len(X_sentences[0].split())
-        max_n = min(self.ngram_range[1], sentence_len)
-        min_n = min(self.ngram_range[0], max_n)
+        if self.ngram_range is None:
+            # Default to "near-full sentence" n-grams, scaled to however many tokens this config produces
+            min_n, max_n = max(1, sentence_len - 1), sentence_len
+        else:
+            max_n = min(self.ngram_range[1], sentence_len)
+            min_n = min(self.ngram_range[0], max_n)
 
         # Vectorization
         vec_class = TfidfVectorizer if self.vectorizer_type == 'tfidf' else CountVectorizer

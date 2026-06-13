@@ -1,7 +1,8 @@
 import numpy as np, pandas as pd, os
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.feature_extraction.text import CountVectorizer
-from scipy.signal import resample_poly
+from scipy.signal import resample_poly, find_peaks
+from scipy.stats import kurtosis, skew
 import matplotlib.pyplot as plt
 from sklearn.base import clone
 from costream.segmentation.streaming_segmenter import (
@@ -108,6 +109,80 @@ def _extract_window(sig, anchor, win_samples, pre_event_samples=100):
     return w if len(w) == win_samples else None
 
 
+def compute_impact_features(window, freq=100, impact_phase_secs=1.0, pre_event_secs=1.0):
+    """Compute candidate impact/rel_impact magnitudes for a single window.
+
+    Returns the localized impact-phase peak alongside several "rest of window"
+    statistics, plus a few candidate ratio definitions for comparison.
+    """
+    start = int(pre_event_secs * freq)
+    end = start + int(impact_phase_secs * freq)
+    impact_phase = np.abs(window[start:end])
+    rest = np.abs(np.concatenate([window[:start], window[end:]]))
+
+    peak = np.max(impact_phase)
+    rest_mean = np.mean(rest)
+    rest_max = np.max(rest)
+    rest_std = np.std(rest)
+
+    return {
+        "peak": peak,
+        "rest_mean": rest_mean,
+        "rest_max": rest_max,
+        "rest_std": rest_std,
+        "ratio_mean": peak / (rest_mean + 1e-6),
+        "ratio_max": peak / (rest_max + 1e-6),
+        "zscore": (peak - rest_mean) / (rest_std + 1e-6),
+    }
+
+
+def compute_jerk_features(window):
+    """Compute candidate jerk (rate-of-change) magnitudes for a single window.
+
+    Mirrors compute_impact_features, but operates on the first difference of
+    the raw signal over the whole window (no phase localization).
+    """
+    jerk = np.abs(np.diff(window))
+
+    peak = np.max(jerk)
+    mean = np.mean(jerk)
+    std = np.std(jerk)
+
+    return {
+        "jerk_peak": peak,
+        "jerk_mean": mean,
+        "jerk_std": std,
+        "jerk_ratio": peak / (mean + 1e-6),
+        "jerk_zscore": (peak - mean) / (std + 1e-6),
+    }
+
+
+def compute_peak_count_features(window, freq=100, height_mult=1.5, min_distance_secs=0.3):
+    """Count distinct peaks in a window, relative to its own baseline.
+
+    Uses a height threshold relative to the window's own median magnitude
+    (no dataset-specific calibration) and a minimum spacing in seconds, so
+    it can be computed identically at training and inference time.
+    """
+    abs_w = np.abs(window)
+    height = height_mult * np.median(abs_w)
+    distance = max(1, int(min_distance_secs * freq))
+    peaks, _ = find_peaks(abs_w, height=height, distance=distance)
+    return {"n_peaks": len(peaks)}
+
+
+def compute_kurtosis_features(window):
+    """Excess kurtosis of the window: high = mostly flat with a sharp outlier,
+    low = uniformly active/oscillatory. Scale-invariant, no thresholds."""
+    return {"kurtosis": kurtosis(window, fisher=True)}
+
+
+def compute_skewness_features(window):
+    """Skewness of the window: captures asymmetry of the amplitude distribution.
+    Scale/shift-invariant, no thresholds."""
+    return {"skewness": skew(window)}
+
+
 def symbolic_confusion_trace(
     model,
     test_signals,
@@ -121,6 +196,7 @@ def symbolic_confusion_trace(
     debounce_secs=60,
     include_tn=False,
     tn_max_per_rec=20,
+    return_windows=False,
 ):
     thresh = getattr(model, "threshold_", 0.5)
     win = int(window_size * freq)
@@ -157,25 +233,24 @@ def symbolic_confusion_trace(
             if hit:
                 for i in hit:
                     matched.add(i)
-                rows.append(
-                    dict(
-                        rec_id=rec_id,
-                        kind="TP",
-                        anchor=a,
-                        token_sentence=token,
-                        conf=float(conf[a]),
-                    )
+                row = dict(
+                    rec_id=rec_id,
+                    kind="TP",
+                    anchor=a,
+                    token_sentence=token,
+                    conf=float(conf[a]),
                 )
             else:
-                rows.append(
-                    dict(
-                        rec_id=rec_id,
-                        kind="FP",
-                        anchor=a,
-                        token_sentence=token,
-                        conf=float(conf[a]),
-                    )
+                row = dict(
+                    rec_id=rec_id,
+                    kind="FP",
+                    anchor=a,
+                    token_sentence=token,
+                    conf=float(conf[a]),
                 )
+            if return_windows:
+                row["window"] = w
+            rows.append(row)
 
         # FN from unmatched GT events
         for i, ev in enumerate(events):
@@ -190,15 +265,16 @@ def symbolic_confusion_trace(
                         else None
                     )
                 )
-                rows.append(
-                    dict(
-                        rec_id=rec_id,
-                        kind="FN",
-                        anchor=ev,
-                        token_sentence=token,
-                        conf=float(conf[min(ev, len(conf) - 1)]),
-                    )
+                row = dict(
+                    rec_id=rec_id,
+                    kind="FN",
+                    anchor=ev,
+                    token_sentence=token,
+                    conf=float(conf[min(ev, len(conf) - 1)]),
                 )
+                if return_windows:
+                    row["window"] = w
+                rows.append(row)
 
         # Optional TN sampling (window-level)
         if include_tn:
@@ -219,15 +295,16 @@ def symbolic_confusion_trace(
                     if hasattr(model, "tokenizer_")
                     else None
                 )
-                rows.append(
-                    dict(
-                        rec_id=rec_id,
-                        kind="TN",
-                        anchor=s,
-                        token_sentence=token,
-                        conf=float(np.max(conf[s:e])),
-                    )
+                row = dict(
+                    rec_id=rec_id,
+                    kind="TN",
+                    anchor=s,
+                    token_sentence=token,
+                    conf=float(np.max(conf[s:e])),
                 )
+                if return_windows:
+                    row["window"] = w
+                rows.append(row)
                 tn_count += 1
 
     return pd.DataFrame(rows)
@@ -258,6 +335,47 @@ def explode_ngram_motifs(trace_df, ngram_range, kind="FP", top_n=10):
     freqs = np.asarray(counts.sum(axis=0)).ravel()
     motif_df = pd.DataFrame({"token": vec.get_feature_names_out(), "count": freqs})
     return motif_df.sort_values("count", ascending=False).head(top_n).reset_index(drop=True)
+
+
+def ngram_enrichment(trace_df, ngram_range, kind_a="FP", kind_b="TP", top_n=15, eps=1e-3):
+    """Rank n-grams by how much more often they occur in `kind_a` windows than `kind_b` windows.
+
+    Frequencies are normalized by the number of windows of each kind, so the
+    comparison is fair even when the two groups have very different sizes.
+    """
+    df_a = trace_df[trace_df.kind == kind_a].dropna(subset=["token_sentence"])
+    df_b = trace_df[trace_df.kind == kind_b].dropna(subset=["token_sentence"])
+    if df_a.empty or df_b.empty:
+        return pd.DataFrame(columns=["token", f"{kind_a}_freq", f"{kind_b}_freq", "enrichment"])
+
+    vec = CountVectorizer(ngram_range=ngram_range, token_pattern=r"(?u)\b\w+\b")
+    vec.fit(pd.concat([df_a["token_sentence"], df_b["token_sentence"]]))
+
+    freq_a = np.asarray(vec.transform(df_a["token_sentence"]).sum(axis=0)).ravel() / len(df_a)
+    freq_b = np.asarray(vec.transform(df_b["token_sentence"]).sum(axis=0)).ravel() / len(df_b)
+
+    enrichment_df = pd.DataFrame({
+        "token": vec.get_feature_names_out(),
+        f"{kind_a}_freq": freq_a,
+        f"{kind_b}_freq": freq_b,
+        "enrichment": (freq_a + eps) / (freq_b + eps),
+    })
+    enrichment_df = enrichment_df[enrichment_df[f"{kind_a}_freq"] > 0]
+    return enrichment_df.sort_values("enrichment", ascending=False).head(top_n).reset_index(drop=True)
+
+
+def sentence_overlap(trace_df, kind_a="TP", kind_b="FP"):
+    """Fraction of `kind_a`/`kind_b` full token sentences that also occur in the other group."""
+    sents_a = set(trace_df.loc[trace_df.kind == kind_a, "token_sentence"].dropna())
+    sents_b = set(trace_df.loc[trace_df.kind == kind_b, "token_sentence"].dropna())
+    shared = sents_a & sents_b
+    return {
+        f"unique_{kind_a}": len(sents_a),
+        f"unique_{kind_b}": len(sents_b),
+        "shared": len(shared),
+        f"frac_{kind_a}_shared": len(shared) / len(sents_a) if sents_a else 0.0,
+        f"frac_{kind_b}_shared": len(shared) / len(sents_b) if sents_b else 0.0,
+    }
 
 
 def resample_df(df, feat_cols, orig_freq, target_freq):

@@ -1,11 +1,11 @@
 token,count,in_fall_vocab
-d e impact_med rel_impact_high,9,False
-d d e impact_med,9,False
-d d e impact_med rel_impact_high,6,False
-d d e impact_high,5,False
-d d e impact_high rel_impact_high,5,False
-d e impact_high rel_impact_high,5,False
-d e e impact_med rel_impact_high,3,False
-e d e impact_med rel_impact_high,3,False
-d e impact_med rel_impact_med,3,False
-e e impact_med rel_impact_high,3,True
+c c c impact_low,12,False
+c c c impact_med,11,False
+c c c impact_med rel_impact_med,10,False
+c c impact_med rel_impact_med,10,False
+c c c impact_low rel_impact_low,8,False
+c c impact_low rel_impact_low,8,False
+c c c impact_low rel_impact_med,4,False
+d b impact_low rel_impact_low,4,False
+c c impact_low rel_impact_med,4,False
+c c d impact_high,3,False

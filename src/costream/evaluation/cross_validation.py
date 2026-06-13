@@ -143,10 +143,10 @@ def run_subject_cv(
         fold_results["fold"] = fold_idx
         all_results.append(fold_results)
 
-        if verbose:
-            # Print quick summary of this fold
-            print("  Fold Results (Mean F1):")
-            print(fold_results.groupby("model")["f1-score"].mean())
+        # if verbose:
+        #     # Print quick summary of this fold
+        #     print("  Fold Results (Mean F1):")
+        #     print(fold_results.groupby("model")["f1-score"].mean())
 
     # 4. Aggregate
     final_df = pd.concat(all_results, ignore_index=True)

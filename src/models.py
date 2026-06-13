@@ -87,13 +87,11 @@ def get_model_specs(
         "FallLM": ModelSpec(
             name="FallLM",
             estimator=FallLM(
-                n_bins=8,
+                n_bins=5,
                 word_size=3,
-                vectorizer_type="count",
                 alpha=1.5,
-                ngram_range=(4,5),
+                ngram_range=(4, 5),
                 use_diff=False,
-                tune_threshold=False,
             ),
         ),
     }
