@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Sequence, Union
 import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, clone
+from imblearn.over_sampling import RandomOverSampler
 
 from ..model.metrics import compute_metrics_from_cm
 from ..segmentation.streaming_segmenter import sliding_window_inference
@@ -24,8 +25,30 @@ class ModelSpec:
     def clone(self):
         return ModelSpec(self.name, clone(self.estimator), self.param_grid)
 
-def train_models(X_train, y_train, specs, verbose=True):
+def resample_training_data(X, y, random_state=42):
+    # Handle both 2D and 3D arrays
+    original_shape = X.shape
+    if len(original_shape) == 2:
+        X_flat = X
+    elif len(original_shape) == 3:
+        n_cases = original_shape[0]
+        X_flat = X.reshape(n_cases, -1)
+    else:
+        raise ValueError(f"Expected 2D or 3D array, got shape {original_shape}")
+
+    # Apply random over-sampling
+    ros = RandomOverSampler(random_state=random_state)
+    X_resampled_flat, y_resampled = ros.fit_resample(X_flat, y)
+
+    # Restore to original shape
+    X_resampled = X_resampled_flat.reshape(X_resampled_flat.shape[0], *original_shape[1:])
+    return X_resampled, y_resampled
+
+def train_models(X_train, y_train, specs, verbose=True, resample=True, random_state=42):
     trained = {}
+    if resample:
+        if verbose: print("Resampling training data to address class imbalance...")
+        X_train, y_train = resample_training_data(X_train, y_train, random_state=random_state)
     if verbose: print(f"TRAINING {len(specs)} models...")
     for spec in specs:
         model = clone(spec.estimator)
@@ -113,10 +136,11 @@ def run_experiment(
     tolerance: Union[float, Sequence[float]] = [7.0, 20.0],
     debounce_secs: float = 60.0,
     ensemble_all: bool = False,
+    random_state: int = 42,
     verbose: bool = True
 ) -> pd.DataFrame:
 
-    trained_models = train_models(X_train, y_train, model_specs, verbose=verbose)
+    trained_models = train_models(X_train, y_train, model_specs, verbose=verbose, random_state=random_state)
     return evaluate_models(
         trained_models, test_signals, test_event_points,
         window_size=window_size, step=step, freq=freq,

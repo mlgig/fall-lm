@@ -35,7 +35,7 @@ def run_subject_cv(
     # Streaming/Eval Params
     tolerance: Union[float, Sequence[float]] = [7.0, 20.0],
     debounce_secs: float = 60.0,
-    verbose: bool = True,
+    verbose: bool = True
 ) -> pd.DataFrame:
     """
     Orchestrate a Subject-Wise Cross-Validation experiment.
@@ -137,6 +137,7 @@ def run_subject_cv(
             tolerance=tolerance,
             debounce_secs=debounce_secs,
             verbose=False,
+            random_state=random_state,
         )
 
         # Tag with fold index

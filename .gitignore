@@ -1,3 +1,6 @@
 .claude
 /data
 /ignore
+src/fall_showcase.py
+__pycache__
+*.tex

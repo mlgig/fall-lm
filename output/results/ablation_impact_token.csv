@@ -1,0 +1,4 @@
+Configuration,FallAllD f1-score,FallAllD precision,FallAllD recall,FARSEEING f1-score,FARSEEING precision,FARSEEING recall
+SAX only,0.670,0.808,0.573,0.418 (0.057),0.302 (0.048),0.692 (0.108)
+SAX + impact (3-level),0.738,0.594,0.973,0.667 (0.093),0.682 (0.136),0.668 (0.111)
+SAX + impact (12-bin),0.794,0.684,0.945,0.464 (0.136),0.711 (0.184),0.350 (0.119)

@@ -447,8 +447,8 @@ def extract_top_tokens(model, top_n=20):
         {"token": feature_names, "weight": coef, "abs_weight": np.abs(coef)}
     )
     df = df.sort_values("abs_weight", ascending=False)
-    top_fall = df[df.weight > 0].head(top_n).copy()
-    top_normal = df[df.weight < 0].head(top_n).copy()
+    top_fall = df[df.weight > 0].head(top_n).copy().sort_values("abs_weight", ascending=False)
+    top_normal = df[df.weight < 0].head(top_n).copy().sort_values("abs_weight", ascending=False)
 
     return top_fall, top_normal
 
@@ -595,6 +595,75 @@ def plot_motif_grid(
     # fig.supylabel("Acceleration (g)", fontsize=12, x=0.11, y=0.6)
     fig.supxlabel("Time (s)", fontsize=12, x=0.57, y=0.14)
     fig.tight_layout(rect=(0.08, 0.07, 1, 1))
+    return axes
+
+
+def plot_motif_grid_topn(
+    model,
+    motif_df,
+    X,
+    n=3,
+    freq=100,
+    max_samples=40,
+):
+    """
+    N×2 motif grid (rows = Top 1..N, cols = Fall / ADL) for a single dataset.
+    motif_df must have 'token' and 'type' columns (type values 'Fall' / 'ADL').
+    """
+    fall_tokens = motif_df[motif_df["type"].str.lower() == "fall"]["token"].tolist()[:n]
+    adl_tokens  = motif_df[motif_df["type"].str.lower() == "adl"]["token"].tolist()[:n]
+    n_rows = max(len(fall_tokens), len(adl_tokens))
+
+    fig, axes = plt.subplots(
+        n_rows, 2, figsize=(8, n_rows * 1.9), sharex=True, dpi=300
+    )
+    if n_rows == 1:
+        axes = axes[np.newaxis, :]
+
+    col_headers = ["Fall motion pattern", "ADL motion pattern"]
+
+    for r in range(n_rows):
+        for c, tokens in enumerate([fall_tokens, adl_tokens]):
+            ax = axes[r, c]
+            ax.tick_params(labelsize=8)
+            for spine in ["top", "right", "left", "bottom"]:
+                ax.spines[spine].set_visible(True)
+                ax.spines[spine].set_linewidth(0.8)
+
+            if r == 0:
+                ax.set_title(col_headers[c], fontsize=10, y=1.22)
+
+            if r < len(tokens):
+                motif = tokens[r]
+                ax.text(
+                    0.5, 1.03, motif, transform=ax.transAxes,
+                    ha="center", va="bottom", fontsize=8.5,
+                    fontweight="bold", family="monospace",
+                )
+                wins = extract_token_windows(model, X, motif, max_samples=max_samples)
+                if len(wins) > 0:
+                    t = np.arange(wins.shape[1]) / freq
+                    for w in wins:
+                        ax.plot(t, w, color="0.82", alpha=0.45, linewidth=0.8)
+                    mean = wins.mean(axis=0)
+                    ax.plot(
+                        t, mean, color="black", linewidth=2.0,
+                        label="Mean pattern" if (r == 0 and c == 0) else None,
+                    )
+                    if r == 0 and c == 0:
+                        ax.plot([], [], color="0.82", linewidth=1.0,
+                                label="Representative windows (g)")
+
+            if c == 0:
+                ax.annotate(
+                    f"Top {r + 1}", xy=(-0.12, 0.5), xycoords="axes fraction",
+                    ha="right", va="center", fontsize=10, rotation=90,
+                )
+
+    axes[0, 0].legend(frameon=False, fontsize=8, loc="upper right")
+    fig.supylabel("Acceleration (g)", fontsize=11, x=0.08)
+    fig.supxlabel("Time (s)", fontsize=11, y=0.08)
+    fig.tight_layout(rect=(0.06, 0.04, 1, 1))
     return axes
 
 

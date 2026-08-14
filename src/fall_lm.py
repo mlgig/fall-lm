@@ -157,7 +157,7 @@ class FallLM(BaseEstimator, ClassifierMixin):
         self.base_estimator = base_estimator
         if base_estimator is None:
             self.base_estimator = LogisticRegression(
-                class_weight='balanced', max_iter=2000,
+                class_weight=None, max_iter=2000,
                 random_state=self.random_state
             )
         # Internal state
