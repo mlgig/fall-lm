@@ -7,7 +7,7 @@ Falls are a major health concern for older adults, and wearable sensors have bee
 
 ## Experiments
 
-This repository contains the code used for the experiments in the paper. It includes the streaming evaluation pipeline, and the experimental setup used to compare motion representations for wearable fall detection. The [experiments.ipynb](experiments.ipynb) notebook reproduces the experiments reported in the paper:
+This repository contains the code used for the experiments in the [paper](https://arxiv.org/abs/2608.13197). It includes the streaming evaluation pipeline, and the experimental setup used to compare motion representations for wearable fall detection. The [experiments.ipynb](experiments.ipynb) notebook reproduces the experiments reported in the paper:
 
 1. **Subject-wise cross-validation** on the FARSEEING real-world falls dataset.  
 2. **Data scarcity analysis**, where the number of training fall events is progressively reduced.  
@@ -24,9 +24,9 @@ The preprocessed version of the `FallAllD` dataset used in this study can be dow
 
 ---
 
-## Citation
+## Full Paper and Citation
 
-If this work helps your research, please cite:
+The full paper PDF is available [here](https://arxiv.org/abs/2608.13197). If this work helps your research, please cite:
 
 ``` bibtex
 @article{aderinola2026motionreps,
