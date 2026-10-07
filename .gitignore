@@ -1,6 +1,7 @@
-.claude
 /data
 /ignore
 src/fall_showcase.py
+fall_lm_animation.py
+output/figures/fall_lm_animation.gif
 __pycache__
 *.tex
